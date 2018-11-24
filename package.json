@@ -1,0 +1,27 @@
+{
+  "name": "fs-crawl",
+  "version": "0.1.0",
+  "description": "File system operations utilities that calls your functions on different events for more versatility.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salvadorOrtega/fs-crawl.git"
+  },
+  "keywords": [
+    "nodejs",
+    "fs",
+    "file",
+    "system",
+    "asynchronous",
+    "promise-based"
+  ],
+  "author": "Salvador Ortega",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/salvadorOrtega/fs-crawl/issues"
+  },
+  "homepage": "https://github.com/salvadorOrtega/fs-crawl#readme"
+}
