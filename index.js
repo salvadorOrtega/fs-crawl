@@ -69,10 +69,10 @@ crawl.crawlDir = async (absolutePath, onFileCallback = null, onDirCallback = nul
   }
 };
 
-crawl.crawlDirObj = async (obj, onParentCallback = null, onChildCallback = null, options = null) => {  
+crawl.crawlDirObj = async (obj, onParentCallback = null, onChildCallback = null, options = null) => {
   const crawlOptionDefaults = {
-    awaitCallbacks: false, 
-    parentBeforeChild: false, 
+    awaitCallbacks: true, 
+    parentBeforeChild: false, // not yet used in this function
     depth: 0, 
     afterDir: () => Promise.resolve(), 
     awaitAfterDepth: true
@@ -128,15 +128,6 @@ crawl.objToDir = (obj, basePath) => new Promise((resolve, reject) => {
       runningPath = path.join(runningPath, res);
       if (!err) {
         resolve();
-        // example of halting progress when a certain file or dir is reached by name
-        /* if (path.basename(pathName) === 'child41Dir'){
-          console.log(`waiting on ${pathName}`);
-          setTimeout(() => {
-            resolve();
-          }, 10 * 1000)
-        } else {
-          resolve();
-        } */
       }
       else {
         console.log(`ERR making dir ${pathName}`);
@@ -146,7 +137,7 @@ crawl.objToDir = (obj, basePath) => new Promise((resolve, reject) => {
   });
   const onFileCallback = (res, options) => new Promise((resolve, reject) => {
     const filePath = path.join(runningPath, res);
-    fs.writeFile(filePath, null, err => {
+    fs.writeFile(filePath, '', err => {
       if (!err) {
         resolve();
       }
@@ -164,6 +155,9 @@ crawl.objToDir = (obj, basePath) => new Promise((resolve, reject) => {
   crawl.crawlDirObj(obj, onDirCallback, onFileCallback, {awaitCallbacks: true, afterDir: afterDir, awaitAfterDepth: true})
   .then(() => {
     resolve();
+  })
+  .catch(err => {
+    console.log(err);
   })
 });
 
@@ -195,20 +189,90 @@ crawl.dirToObj = (absDirPath, pathKeys = false) => new Promise((resolve, reject)
 
 --> crawl.tree() to pretty-print contents of directory
 
-*/
-// TODO
-/* crawl.copy = (fromPath, toPath) => new Promise((resolve, reject) => {
-  crawl.crawlDir(fromPath, 
-    () => {},
-    () => {},
-    {parentBeforeChild: true, awaitCallbacks: true} 
-  )
-}); */
+/* Copies folders and files from one path to another but all files are empty */
+crawl.copyEmptyStructure = (fromPath, toPath) => new Promise((resolve, reject) => {
+  crawl.dirToObj(fromPath)
+  .then(dirObj => {
+    crawl.objToDir(dirObj, toPath)
+    .then(() => resolve())
+  })
+  .catch(err => reject(err));
+});
 
+/* 
+WARNING: does not copy directory metadata, but does so for files at it copies using fs.copyFile behavior
+*/
+crawl.copy = (fromPath, toPath) => new Promise((resolve, reject) => {
+  fromPath = path.normalize(fromPath);
+  toPath = path.normalize(toPath);
+
+  crawl.dirToObj(fromPath, false)
+  .then(dirObject => {
+    newDirObj = {};
+    newDirObj[path.basename(fromPath)] = dirObject;
+    crawl._copyController(fromPath, toPath, newDirObj)
+    .then(() => {
+      resolve();
+    })
+    .catch(err => {
+      reject(err);
+    })
+  })
+  .catch(err => {
+    console.log(err);
+    reject(err);
+  })
+});
+
+crawl._copyController = (fromPath, toPath, obj) => new Promise((resolve, reject) => {
+  let runningDestPath = path.join(toPath);
+  let runningFromPath = path.join(fromPath,'../'); // goes back one level to accout for having added the new dir to toPath
+
+  if (!path.isAbsolute(runningDestPath)){
+    reject(`ERR: Path argument is not absolute`);
+  }
+
+  const onDirCallback = (res, options) => new Promise((resolve, reject) => {
+    const pathName = path.join(runningDestPath, res);
+    runningDestPath = path.join(runningDestPath, res);
+    runningFromPath = path.join(runningFromPath, res);
+    fs.mkdir(pathName, err => {
+      if (!err) {
+        resolve();
+      }
+      else {
+        console.log(`ERR making dir ${pathName}`);
+        reject(err)
+      };
+    })
+  });
+  const onFileCallback = (res, options) => new Promise((resolve, reject) => {
+    const newFilePath = path.join(runningDestPath, res);
+    const fromFilePath = path.join(runningFromPath, res);
+    fs.copyFile(fromFilePath, newFilePath, err => {
+      if (!err){
+        resolve();
+      } else {
+        reject(err);
+      }
+    })
+  });
+  const afterDir = () => new Promise((resolve, reject) => {
+    runningDestPath = path.join(runningDestPath, '../');
+    runningFromPath = path.join(runningFromPath, '../');
+    resolve();
+  });
+  
+  crawl.crawlDirObj(obj, onDirCallback, onFileCallback, {awaitCallbacks: true, afterDir: afterDir, awaitAfterDepth: true})
+  .then(() => {
+    resolve();
+  })
+  .catch(err => {
+    console.log(err);
+  })
+});
 
 crawl.remove = (absPath, options) => new Promise((resolve, reject) => {
-  const defaults = {awaitCallbacks: true, pathKeys: true};
-
   const dirFoundPathCallback = dirFoundPath => new Promise((resolve, reject) => {
     fs.rmdir(dirFoundPath, err => {
       if (err){
