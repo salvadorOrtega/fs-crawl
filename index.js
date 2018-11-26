@@ -73,9 +73,8 @@ crawl.crawlDirObj = async (obj, onParentCallback = null, onChildCallback = null,
   const crawlOptionDefaults = {
     awaitCallbacks: true, 
     parentBeforeChild: false, // not yet used in this function
-    depth: 0, 
     afterDir: () => Promise.resolve(), 
-    awaitAfterDepth: true
+    awaitAfterDepth: true //true
   };
   options = {...crawlOptionDefaults, ...options};
   const fileChildren = [];
@@ -188,6 +187,12 @@ crawl.dirToObj = (absDirPath, pathKeys = false) => new Promise((resolve, reject)
 --> crawl.findDirname()
 
 --> crawl.tree() to pretty-print contents of directory
+*/
+
+/* TODO: crawl.copyToMany(fromPath, toPaths: path[]) */
+
+crawl.tree = pathToDir => {
+}
 
 /* Copies folders and files from one path to another but all files are empty */
 crawl.copyEmptyStructure = (fromPath, toPath) => new Promise((resolve, reject) => {
@@ -200,7 +205,7 @@ crawl.copyEmptyStructure = (fromPath, toPath) => new Promise((resolve, reject) =
 });
 
 /* 
-WARNING: does not copy directory metadata, but does so for files at it copies using fs.copyFile behavior
+WARNING: does not copy directory metadata, but does so for files at it copies using fs.copyFile behavior.
 */
 crawl.copy = (fromPath, toPath) => new Promise((resolve, reject) => {
   fromPath = path.normalize(fromPath);
@@ -210,7 +215,7 @@ crawl.copy = (fromPath, toPath) => new Promise((resolve, reject) => {
   .then(dirObject => {
     newDirObj = {};
     newDirObj[path.basename(fromPath)] = dirObject;
-    crawl._copyController(fromPath, toPath, newDirObj)
+    crawl._copyController(newDirObj, fromPath, {toPath: toPath} )
     .then(() => {
       resolve();
     })
@@ -219,51 +224,172 @@ crawl.copy = (fromPath, toPath) => new Promise((resolve, reject) => {
     })
   })
   .catch(err => {
-    console.log(err);
     reject(err);
   })
 });
 
-crawl._copyController = (fromPath, toPath, obj) => new Promise((resolve, reject) => {
-  let runningDestPath = path.join(toPath);
-  let runningFromPath = path.join(fromPath,'../'); // goes back one level to accout for having added the new dir to toPath
+crawl.copyOneToMany = (fromPath, destinationsArray) => new Promise((resolve, reject) => {
+  fromPath = path.normalize(fromPath);
+  const toPathsObj = {};
+  let _i = 0;
+  for(let dest of destinationsArray){
+    toPathsObj[_i++] = dest;
+  }
 
-  if (!path.isAbsolute(runningDestPath)){
-    reject(`ERR: Path argument is not absolute`);
+  crawl.dirToObj(fromPath, false)
+  .then((obj) => {
+    crawl._copyController(obj, fromPath, toPathsObj)
+    .then(() => {
+      resolve();
+    })
+    .catch(err => {
+      reject(err);
+    })
+  })
+});
+
+crawl._crawlDirObjController = (obj, onDirCallback = null, onFileCallback = null, options = null) => new Promise((resolve, reject) => {
+  /* 
+    NOTE: trackDepth will receive an object with keys poiting to different paths that will be reassigned to new paths 
+    resolved to look as if we were crawling the `obj` inside these paths as the crawler changes depth. The updated paths
+    will be sent to both onDirCallback and onFileCallback after resolution for use.
+  */
+  const defaultControllerOptions = { awaitAfterDepth: true , trackDepth: null, afterDir: null};
+  options = {...defaultControllerOptions, ...options};
+
+  const _relativizePaths = (optionsDepthObj, basePath = '', addOrSub = 'add') => { //addOrSub: 'add' | 'sub';
+    for(let singlePath in optionsDepthObj){
+      let newPath;
+      if (addOrSub === 'add'){
+        newPath = path.join(optionsDepthObj[singlePath], basePath);
+      } else if (addOrSub === 'sub'){
+        newPath = path.join(optionsDepthObj[singlePath], '../');
+      }
+      optionsDepthObj[singlePath] = newPath;
+    }
+    // no need to return as objects are pass
+  }
+
+  const _onDirCallback = (res, options) => new Promise((resolve, reject) => {
+    if (options.trackDepth !== null){
+      _relativizePaths(options.trackDepth, res);
+    }
+    if (onDirCallback !== null) {
+      onDirCallback(res, options)
+      .then(() => {
+        resolve();
+      })
+      .catch(err => {
+        reject(err);
+      })
+    } else {
+      resolve();
+    }
+  });
+
+  const _onFileCallback = (res, options) => new Promise((resolve, reject) => {
+    if (options.trackDepth !== null){
+      _relativizePaths(options.trackDepth, res);
+    }
+    if (onFileCallback !== null){
+      onFileCallback(res, options)
+      .then(() => {
+        if (options.trackDepth !== null){
+          _relativizePaths(options.trackDepth, '', 'sub'); // remove the basename, which is the name of the file
+        }
+        resolve();
+      })
+      .catch(err => reject(err));
+    } else {
+      if (options.trackDepth !== null){
+        _relativizePaths(options.trackDepth, '', 'sub');
+      }
+      resolve();
+    }
+  });
+
+  const _afterDir = () => new Promise((resolve, reject) => {
+    if (options.trackDepth !== null){
+      _relativizePaths(options.trackDepth, '', 'sub');
+    }
+    if (options.afterDir !== null){
+      options.afterDir(options)
+      .then(() => {
+        resolve();
+      })
+      .catch(err => {
+        reject(err);
+      });
+    } else {
+      resolve();
+    }
+  })
+
+  crawl.crawlDirObj(obj, _onDirCallback, _onFileCallback, {...options, afterDir: _afterDir})
+  .then(() => {
+    console.log(`Resolved _crawlDirObjController`);
+    resolve();
+  })
+  .catch(err => {
+    console.log(`Rejected _crawlDirObjController`);
+    reject(err);
+  })
+})
+
+crawl._copyController = (obj, fromPath, toPathsObj) => new Promise((resolve, reject) => {
+  let runningFromPath = path.join(fromPath); // goes back one level to accout for having added the new dir to toPath
+
+  const optionsObj = {
+    trackDepth: {
+      runningFromPath: runningFromPath,
+      ...toPathsObj
+    },
+    awaitCallbacks: true, 
+    awaitAfterDepth: true
   }
 
   const onDirCallback = (res, options) => new Promise((resolve, reject) => {
-    const pathName = path.join(runningDestPath, res);
-    runningDestPath = path.join(runningDestPath, res);
-    runningFromPath = path.join(runningFromPath, res);
-    fs.mkdir(pathName, err => {
-      if (!err) {
-        resolve();
+    const keys = Object.keys(options.trackDepth);
+    const throughAll = Promise.all(keys.map(singlePathVar => new Promise((resolve, reject) => {
+      if (options.trackDepth[singlePathVar] === options.trackDepth.runningFromPath){
+        return resolve();
       }
-      else {
-        console.log(`ERR making dir ${pathName}`);
-        reject(err)
-      };
+      fs.mkdir(options.trackDepth[singlePathVar], err => {
+        if (!err){
+          resolve();
+        } else {
+          reject(err);
+        }
+      })
+    })))
+    throughAll.then(() => {
+      resolve();
     })
+    .catch(err => reject(err));
   });
   const onFileCallback = (res, options) => new Promise((resolve, reject) => {
-    const newFilePath = path.join(runningDestPath, res);
-    const fromFilePath = path.join(runningFromPath, res);
-    fs.copyFile(fromFilePath, newFilePath, err => {
-      if (!err){
-        resolve();
-      } else {
-        reject(err);
+    const keys = Object.keys(options.trackDepth);
+    const throughAll = Promise.all(keys.map(singlePathVar => new Promise((resolve, reject) => {
+      if (options.trackDepth[singlePathVar] === options.trackDepth.runningFromPath){
+        return resolve();
       }
+      fs.copyFile(options.trackDepth.runningFromPath, options.trackDepth[singlePathVar], err => {
+        if (!err){
+          resolve();
+        } else {
+          reject(err);
+        }
+      })
+    })));
+    throughAll.then(() => {
+      resolve();
     })
-  });
-  const afterDir = () => new Promise((resolve, reject) => {
-    runningDestPath = path.join(runningDestPath, '../');
-    runningFromPath = path.join(runningFromPath, '../');
-    resolve();
+    .catch(err => {
+      reject(err);
+    });
   });
   
-  crawl.crawlDirObj(obj, onDirCallback, onFileCallback, {awaitCallbacks: true, afterDir: afterDir, awaitAfterDepth: true})
+  crawl._crawlDirObjController(obj, onDirCallback, onFileCallback, optionsObj)
   .then(() => {
     resolve();
   })
