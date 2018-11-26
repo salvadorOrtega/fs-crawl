@@ -267,7 +267,7 @@ crawl._crawlDirObjController = (obj, onDirCallback = null, onFileCallback = null
       }
       optionsDepthObj[singlePath] = newPath;
     }
-    // no need to return as objects are pass
+    // no need to return as optionsDepthObj is passed by reference
   }
 
   const _onDirCallback = (res, options) => new Promise((resolve, reject) => {
@@ -398,6 +398,25 @@ crawl._copyController = (obj, fromPath, toPathsObj) => new Promise((resolve, rej
   })
 });
 
+crawl.removeMany = (absPathsArray, options) => new Promise((resolve, reject) => {
+  const allPromises = Promise.all(absPathsArray.map(absPath => new Promise((resolve, reject) => {
+    crawl.remove(absPath, options)
+    .then(() => {
+      resolve();
+    })
+    .catch(err => {
+      reject(err);
+    })
+  })));
+  allPromises
+  .then(() => {
+    resolve();
+  })
+  .catch(err => {
+    reject(err);
+  })
+})
+
 crawl.remove = (absPath, options) => new Promise((resolve, reject) => {
   const dirFoundPathCallback = dirFoundPath => new Promise((resolve, reject) => {
     fs.rmdir(dirFoundPath, err => {
@@ -423,7 +442,7 @@ crawl.remove = (absPath, options) => new Promise((resolve, reject) => {
 
   crawl.crawlDir(absPath, fileFoundPathCallback, dirFoundPathCallback, options)
   .then(nonExistentDirObj => {
-    resolve(nonExistentDirObj)
+    return resolve();
   })
   .catch(err => {
     reject(err)

@@ -40,4 +40,4 @@ Similarly, fs-crawl has the `remove()` utility that visits a specified absolute 
 `crawl.copyOneToMany(fromPath, destinationsArray)` copies the contents inside `fromPath` into an arbitrary number of destinations listed in destinationsArray. It first runs `crawl.dirToObj` to obtain a copy of the directory structure as an
 object (i.e. the opposite of `crawl.objToDir`), then runs callbacks that copy each directory and file it encounters into each of the destinations.
 
-The callback patter for when a directory or a file are found allows for easily composable and ever more powerful file system management tool building, all while staying within the asynchronous and promises territory.
+The pattern of running callback functions when a directory or a file is found allows for easily building composable and ever more powerful file system management tools all while staying within the asynchronous and promises territory.
