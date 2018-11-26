@@ -36,3 +36,8 @@ In this case crawl.objToDir passes two callback functions to another fs-crawl ut
 All files at a given depth are handled first, then all subdirectories.
 
 Similarly, fs-crawl has the `remove()` utility that visits a specified absolute path, runs `crawl.crawlDir()` in this case to visit the contents of that directory rather than the contents of an object, and runs two internal callback functions: one that removes a file when one has been found, and another that removes the directory once its depths have been cleared. Basically, fs-crawl gets to all the files at a certain point in the call stack fist, and into the directories depth-first.
+
+`crawl.copyOneToMany(fromPath, destinationsArray)` copies the contents inside `fromPath` into an arbitrary number of destinations listed in destinationsArray. It first runs `crawl.dirToObj` to obtain a copy of the directory structure as an
+object (i.e. the opposite of `crawl.objToDir`), then runs callbacks that copy each directory and file it encounters into each of the destinations.
+
+The callback patter for when a directory or a file are found allows for easily composable and ever more powerful file system management tool building, all while staying within the asynchronous and promises territory.
